@@ -14,11 +14,43 @@ public class Game
 {
     private final Canvas canvas;
     private final List<Card> cards;
+    
             
     /**
      * Create a window that will display and allow the user to play the game
      */
+
+    
+
+    public void mainPage()
+    {
+       Text Label=  new Text ("War: A Twisted Card Game", 0, 20, 80, "Black",true);
+       Rect playButton= new Rect(0,100,100,50,"Red", true);
+       Text playText= new Text("Play",0,100,50,"white",true);
+
+       canvas.addMouseHandler(new MouseInputAdapter() {
+        public void mouseClicked(MouseEvent e) {
+            onClick(e.getButton(), e.getX(), e.getY());
+        }
+        
+        public void mouseMoved(MouseEvent e) {
+            onMove(-1, e.getX(), e.getY());
+        }
+
+        public void mouseDragged(MouseEvent e) {
+            onMove(e.getButton(), e.getX(), e.getY());
+        }
+    });
+
+        
+
+    }
+
     public Game() {
+
+        mainPage();
+        
+
         cards = Card.loadCards();
 
         // Prepare the canvas
