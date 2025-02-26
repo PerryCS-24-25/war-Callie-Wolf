@@ -1,409 +1,233 @@
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.FontFormatException;
-import java.awt.FontMetrics;
-import java.awt.Graphics;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
-import java.awt.image.BufferStrategy;
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
-import javax.imageio.ImageIO;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
-import javax.swing.event.MouseInputListener;
-import javax.swing.filechooser.FileNameExtensionFilter;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Canvas is a class to allow for simple graphical drawing on a canvas. This is
- * a modification of the general purpose Canvas, specially made for the BlueJ
- * "shapes" example.
- *
- * @author: Bruce Quig Michael Kölling Brian Dahlem
- * @version 2018.11.26
+ * A class to represent a playing card that can be displayed on the canvas
  */
-public class Canvas {
-    // Note: The implementation of this class (specifically the handling of
-    // shape identity and colors) is slightly more complex than necessary. This
-    // is done on purpose to keep the interface and instance fields of the
-    // shape objects in this project clean and simple for educational purposes.
+public class Card {
+    private int xPosition;
+    private int yPosition;
+    private Image image;
+    private String rank;
+    private String suit;
+    private int value;
+    private boolean isVisible;
+    private boolean isFaceUp;
 
-    private static Canvas canvasSingleton;
+    private Image backImage;
+
+    String filename;
 
     /**
-     * Factory method to get the canvas singleton object.
-     *
-     * @return a reference to the applications canvas
+     * Create a new card
+     * @param rank the rank of the card (1=Ace, 2-10,  11=Jack, 12=Queen, 13=King)
+     * @param suit the suit of the card (Hearts, Diamonds, Clubs, Spades)
      */
-    public static Canvas getCanvas() {
-        if (canvasSingleton == null) {
-            canvasSingleton = new Canvas("Picture Demo", 800, 600, Color.white);
+    public Card(int rank, String suit) {
+        if (rank > 1 && rank < 11) {
+            this.rank = Integer.toString(rank);
+            filename = this.rank;
+        } else if (rank == 1) {
+            this.rank = "Ace";
+            filename = "a";
+        } else if (rank == 11) {
+            this.rank = "Jack";
+            filename = "j";
+        } else if (rank == 12) {
+            this.rank = "Queen";
+            filename = "q";
+        } else if (rank == 13) {
+            this.rank = "King";
+            filename = "k";
         }
-        canvasSingleton.setVisible(true);
-        return canvasSingleton;
+
+        if (rank != 1)
+            this.value = rank - 1;
+        else
+            this.value = 13;
+
+        this.suit = suit;
+
+        filename += this.suit.substring(0, 1).toLowerCase() + ".png";
+        this.image = new Image("cards/" + filename, -1, 175);
+        this.backImage = new Image("cards/back.png", -1, 175);
+
+        this.isFaceUp = false;
+        this.isVisible = false;
+        this.xPosition = rank * 50;
+        this.yPosition = 0;
     }
 
-    //  ----- instance part -----
-    private JFrame frame;
-    private CanvasPane canvas;
-    private BufferStrategy bs;
-    private Color backgroundColor;
-    private final Map<Object, DrawShape> shapes;
-    private boolean paused = false;
-    private boolean firstShown = false;
+    public int getValue() {
+        return this.value;
+    }
 
     /**
-     * Create a Canvas.
-     *
-     * @param title title to appear in Canvas Frame
-     * @param width the desired width for the canvas
-     * @param height the desired height for the canvas
-     * @param bgColor the desired background color of the canvas
+     * Make the card visible on the canvas
      */
-    private Canvas(String title, int width, int height, Color bgColor) {
-        frame = new JFrame();
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-        canvas = new CanvasPane();
-        frame.add(canvas);
-        frame.setTitle(title);
-        frame.setLocation(30, 30);
-
-        canvas.setPreferredSize(new Dimension(width, height));
-
-        backgroundColor = bgColor;
-        frame.pack();
-        shapes = new LinkedHashMap<>(1000);
-
-        // Listen for Ctrl-S to save the picture
-        frame.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                // If Ctrl-S is pressed...
-                if ((e.getKeyCode() == KeyEvent.VK_S) && 
-                    ((e.getModifiersEx() & KeyEvent.CTRL_DOWN_MASK) != 0)) {
-                    // Ask the user for a filename to save to.
-                    JFileChooser fc = new JFileChooser();
-                    FileNameExtensionFilter filter = new FileNameExtensionFilter(
-                            "PNG Images", "png");
-                    fc.setFileFilter(filter);
-                    int returnVal = fc.showSaveDialog(frame);
-
-                    // Cancel if the user pressed "Cancel"...
-                    if (returnVal == JFileChooser.CANCEL_OPTION) {
-                        return;
-                    }
-
-                    // Get the name of the file the user entered
-                    File file = fc.getSelectedFile();
-                    String fname = file.getAbsolutePath();
-
-                    if (!fname.endsWith(".png")) {
-                        file = new File(fname + ".png");
-                    }
-
-                    // If that file exists, confirm overwrite.
-                    if (file.exists()) {
-                        int overwrite = JOptionPane.showConfirmDialog(frame,
-                                "A file named " + file + " exists.\nOverwrite?", "File Exists",
-                                JOptionPane.YES_NO_OPTION);
-
-                        if (overwrite == JOptionPane.NO_OPTION) {
-                            return;
-                        }
-                    }
-
-                    Font font = new Font("SansSerif", Font.PLAIN, 20);
-
-                    try {
-                        InputStream fnt_stream = getClass().getResourceAsStream("Caveat.ttf");
-                        Font myFont = Font.createFont(Font.TRUETYPE_FONT, fnt_stream);
-                        font = myFont.deriveFont(Font.BOLD, 20f);
-                    } catch (FontFormatException | IOException ex) {
-
-                    }
-
-                    FontMetrics fm = canvas.getFontMetrics(font);
-                    int fontheight = fm.getHeight();
-
-                    // Create a buffered image from the picture
-                    BufferedImage buffer = new BufferedImage(width, height + fontheight + 2,
-                            BufferedImage.TYPE_INT_RGB);
-                    Graphics bgc = buffer.createGraphics();
-                    bgc.setColor(Color.white);
-                    bgc.fillRect(0, 0, width, height + fontheight + 2);
-
-                    redraw(bgc);
-
-                    bgc.setColor(Color.black);
-                    bgc.setFont(font);
-                    bgc.drawString(frame.getTitle(), 0, height + fm.getAscent() + 1);
-
-                    // Save the image
-                    try {
-                        ImageIO.write(buffer, "png", file);
-
-                        // Inform the user of success in saving.
-                        JOptionPane.showMessageDialog(frame,
-                                "Image saved to: " + file, "File Saved",
-                                JOptionPane.INFORMATION_MESSAGE);
-                    } catch (java.io.IOException exc) {
-                        // Alert the user if there is an error.
-                        JOptionPane.showMessageDialog(frame,
-                                "Could not save image to: " + file, "File Error",
-                                JOptionPane.ERROR_MESSAGE);
-                    }
-                }
+    public void makeVisible() {
+        if (!isVisible) {
+            isVisible = true;
+            if (isFaceUp) {
+                image.makeVisible();
+                backImage.makeInvisible();
+            } else {
+                backImage.makeVisible();
+                image.makeInvisible();
             }
-        });
-    }
-
-    /**
-     * Set the canvas visibility and brings canvas to the front of screen when
-     * made visible. This method can also be used to bring an already visible
-     * canvas to the front of other windows.
-     *
-     * @param visible boolean value representing the desired visibility of the
-     * canvas (true or false)
-     */
-    public void setVisible(boolean visible) {
-        if (!firstShown && visible) {
-            firstShown = true;
-            // first time: instantiate the image and fill it with
-            // the background color
-
-            Dimension size = canvas.getSize();
-
-            canvas.createBufferStrategy(2);
-            bs = canvas.getBufferStrategy();
-
-            Graphics graphic = bs.getDrawGraphics();
-            graphic.setColor(backgroundColor);
-            graphic.fillRect(0, 0, size.width, size.height);
-            graphic.setColor(Color.black);
-            graphic.dispose();
-            bs.show();
         }
-        frame.setVisible(visible);
     }
 
     /**
-     * Determine the width of the canvas
+     * Remove the card from the canvas
+     */
+    public void makeInvisible() {
+        if (isVisible) {
+            isVisible = false;
+            image.makeInvisible();
+            backImage.makeInvisible();            
+        }
+    }
+
+    /**
+     * Turn the card face up
+     */
+    public void turnFaceUp() {
+        this.isFaceUp = true;
+    }
+
+    /**
+     * Turn the card face down
+     */
+    public void turnFaceDown() {
+        this.isFaceUp = false;
+    }
+
+    /**
+     * Determine if the card show its face or its back
+     * @param faceUp true if the card should show its face, false if it should show its back
+     */
+    public void setFaceUp(boolean faceUp) {
+        this.isFaceUp = faceUp;
+    }
+
+    /**
+     * Set the X position of the card
+     * @param x the X position of the card
+     */
+    public void setX(int x) {
+        this.xPosition = x;
+        image.setX(x);
+        backImage.setX(x);
+    }
+
+    /**
+     * Set the Y position of the card
+     * @param y the Y position of the card
+     */
+    public void setY(int y) {
+        this.yPosition = y;
+        image.setY(y);
+        backImage.setY(y);
+    }
+
+    /**
+     * Set the position of the card
+     * @param x the x position of the card
+     * @param y the y position of the card
+     */
+    public void setPosition(int x, int y) {
+        this.xPosition = x;
+        this.yPosition = y;
+        image.setPosition(x, y);
+        backImage.setPosition(x, y);
+    }
+
+    /**
+     * Get the X position of the card
+     * @return the X position of the card 
+     */
+    public int getX() {
+        return xPosition;
+    }
+
+    /**
+     * Get the Y position of the card
+     * @return the Y position of the card 
+     */
+    public int getY() {
+        return yPosition;
+    }
+
+    /**
+     * Get the width of the card
+     * @return the width of the card (in pixels)
      */
     public int getWidth() {
-        return canvas.getWidth();
+        return image.getWidth();
     }
 
     /**
-     * Determine the height of the canvas
+     * Get the height of the card
+     * @return the height of the card (in pixels)
      */
     public int getHeight() {
-        return canvas.getHeight();
+        return image.getHeight();
+    }
+    
+    /**
+     * Determine if the card should be showing on the canvas
+     * @return true if the card is not hidden
+     */
+    public boolean isVisible() {
+        return isVisible;
     }
 
     /**
-     * Pause automatic redraws
+     * Determine if the card is face up
+     * @return true if the card is face up, false if face down
      */
-    public void pause(boolean pause) {
-        this.paused = pause;
+    public boolean isFaceUp() {
+        return isFaceUp;
     }
 
     /**
-     * Are automatic redraws paused
+     * Get the rank of the card
+     * @return the rank of the card (2-10, Jack, Queen, King, Ace)
      */
-    public boolean isPaused() {
-        return this.paused;
+    public String getRank() {
+        return rank;
     }
 
     /**
-     * Draw a given shape onto the canvas.
-     *
-     * @param referenceObject an object to define identity for this shape
-     * @param shapeFunction a function that draws the shape on a graphics
-     * context
+     * Get the suit of the card
+     * @return the suit of the card
      */
-    public void add(Object referenceObject, DrawShape shapeFunction) {
-        synchronized (shapes) {
-            if (shapes.containsKey(referenceObject)) {
-                shapes.remove(referenceObject);
-                // throw new IllegalArgumentException("Shape already added to canvas");
+    public String getSuit() {
+        return suit;
+    }
+
+    /**
+     * Determine if a point is contained within the card
+     * @param x the x coordinate
+     * @param y the y coordinate
+     * @return true if the point is contained within the card, false otherwise
+     */
+    public boolean contains(int x, int y) {
+        return image.contains(x, y);
+    }
+
+    /**
+     * Create a deck of cards
+     * @return a list of cards
+     */
+    public static List<Card> loadCards() {
+        List<Card> cards = new ArrayList<Card>();
+        for (String suit : new String[] { "Hearts", "Diamonds", "Clubs", "Spades" }) {
+            for (int i = 1; i <= 13; i++) {
+                cards.add(new Card(i, suit));
             }
-
-            shapes.put(referenceObject, shapeFunction);
         }
-
-        if (!paused) {
-            redraw();
-        }
-    }
-
-    /**
-     * Erase a given shape's from the screen.
-     *
-     * @param referenceObject the shape object to be erased
-     */
-    public void remove(Object referenceObject) {
-
-        synchronized (shapes) {
-            if (!shapes.containsKey(referenceObject)) {
-                throw new IllegalArgumentException("Shape not added to canvas");
-            }
-
-            shapes.remove(referenceObject);
-        }
-
-        if (!paused) {
-            redraw();
-        }
-    }
-
-    /**
-     * Change the name of this canvas
-     *
-     * @param title the new name for the canvas
-     */
-    public void setTitle(String title) {
-        frame.setTitle(title);
-    }
-
-    /**
-     * Set the canvas's background color
-     *
-     * @param bgColor the new background color for the canvas.
-     */
-    public void setBackgroundColor(Color bgColor) {
-        this.backgroundColor = bgColor;
-    }
-
-    /**
-     * Set the canvas's background color
-     *
-     * @param bgColor the new background color for the canvas.
-     */
-    public void setBackgroundColor(String bgColor) {
-        setBackgroundColor(getColor(bgColor));
-    }
-
-    /**
-     * Add a handler to deal with mouse clicks on the canvas
-     */
-    public void addMouseHandler(MouseInputListener ml) {
-        canvas.addMouseListener(ml);
-        canvas.addMouseMotionListener(ml);
-    }
-    
-    /**
-     * Redraw all shapes currently on the Canvas.
-     */
-    public void redraw() {
-        Graphics buffer = bs.getDrawGraphics();
-
-        redraw(buffer);
-
-        buffer.dispose();
-        bs.show();
-    }
-
-    /**
-     * Get a FontMetrics object for the canvas
-     */
-    public static FontMetrics getFontMetrics(Font font) {
-        return canvasSingleton.frame.getFontMetrics(font);
-    }
-    
-    /**
-     * Get the current graphics context for drawing on the canvas
-     */
-    public static Graphics getGraphicsContext() {
-        return canvasSingleton.frame.getGraphics();
-    }
-    
-    /**
-     * Redraw all shapes onto a graphics context
-     */
-    private void redraw(Graphics buffer) {
-        synchronized (shapes) {
-            buffer.setColor(backgroundColor);
-            Dimension size = canvas.getSize();
-            buffer.fillRect(0, 0, size.width, size.height);
-
-            shapes.forEach((k, shape) -> {
-                shape.draw(buffer);
-            });
-        }
-    }
-
-    /**
-     * Clear the whole canvas.
-     */
-    public void clear() {
-        shapes.clear();
-        redraw();
-    }
-
-    /**
-     * Transform a color string into a usable color
-     *
-     * @param colorString the new color for the foreground of the Canvas
-     */
-    public static Color getColor(String colorString) {
-        Color c;
-
-        if (colorString.equals("red")) {
-            c = new Color(235, 25, 25);
-        } else if (colorString.equals("black")) {
-            c = Color.black;
-        } else if (colorString.equals("blue")) {
-            c = new Color(30, 75, 220);
-        } else if (colorString.equals("cyan")) {
-            c = new Color(30, 229, 220);
-        } else if (colorString.equals("brown")) {
-            c = new Color(110, 80, 0);
-        } else if (colorString.equals("yellow")) {
-            c = new Color(255, 230, 0);
-        } else if (colorString.equals("green")) {
-            c = new Color(80, 160, 60);
-        } else if (colorString.equals("magenta")) {
-            c = Color.magenta;
-        } else if (colorString.equals("white")) {
-            c = Color.white;
-        } else if (colorString.startsWith("#") && colorString.length() == 7) {
-            int red = Integer.parseInt(colorString.substring(1, 3), 16);
-            int green = Integer.parseInt(colorString.substring(3, 5), 16);
-            int blue = Integer.parseInt(colorString.substring(5, 7), 16);
-            c = new Color(red, green, blue);
-        } else {
-            c = Color.black;
-        }
-
-        return c;
-    }
-
-    /**
-     * **********************************************************************
-     * Inner class CanvasPane - the actual canvas component contained in the
-     * Canvas frame.
-     */
-    private class CanvasPane extends java.awt.Canvas {
-        @Override
-        public void paint(Graphics g) {
-            redraw();
-        }
-    }
-
-    /**
-     * ***********************************************************************
-     * Inner interface DrawShape - a functional interface that allows a shape to
-     * provide the canvas with a method to draw the shape
-     */
-    public interface DrawShape {
-        public void draw(Graphics g);
+        return cards;
     }
 }
